@@ -1,119 +1,74 @@
-# Phiếu Phản Ánh — K3 Ngày 12
+# Phiếu Phản Ánh - K3 Ngày 12
 
-> **Bài làm cá nhân.** Trả lời bằng lời của chính bạn, dựa trên những gì bạn
-> quan sát được khi chạy code — không sao chép đáp án của người khác.
->
-> Cách trả lời: thay dòng `> *Câu trả lời của bạn*` bằng câu trả lời.
-> `grade.py` đếm số câu đã trả lời (15 điểm cho 10 câu).
->
-> Họ và tên: ..........................  Mã học viên: ..........................
+> Họ và tên: Nguyễn Tuấn Anh  Mã học viên: 2A202601775
 
 ---
 
-### Câu 1 — Fail fast (CP1)
+### Câu 1 - Fail fast (CP1)
 
-Trong `Settings`, `agent_api_key` không có giá trị mặc định nên app chết ngay
-khi khởi động nếu thiếu biến môi trường. Hãy mô tả một tình huống cụ thể mà
-việc "chết sớm" này cứu bạn, so với việc để mặc định `"changeme"`.
-
-> *Câu trả lời của bạn*
+Nếu deploy lên Render mà quên đặt `AGENT_API_KEY`, app phải lỗi ngay khi endpoint cần cấu hình được gọi thay vì âm thầm chạy với khóa mặc định như `changeme`. Trường hợp này cứu mình vì public URL đã mở ra Internet; nếu dùng khóa mặc định, người khác có thể đoán được key và gọi `/ask`, làm tốn quota và làm sai kết quả rate limit/cost guard. Fail fast buộc mình phát hiện thiếu secret trong log và sửa environment variable trước khi coi service là sẵn sàng.
 
 ---
 
-### Câu 2 — Log cho máy đọc (CP1)
+### Câu 2 - Log cho máy đọc (CP1)
 
-Chạy service và gọi `/ask` vài lần. Dán một dòng log JSON bạn thu được, rồi
-nêu **hai** việc bạn làm được với dòng log đó mà `print("đã trả lời xong")`
-không làm được.
+Một dòng log mình thu được khi gọi `/ask`:
 
-> *Câu trả lời của bạn*
-
----
-
-### Câu 3 — Kích thước image (CP2)
-
-Build cả hai phiên bản và ghi lại số đo thật:
-
-```bash
-docker build -f <Dockerfile-1-stage> -t agent:single .
-docker build -t agent:multi .
-docker images | grep agent
+```json
+{"event":"ask_completed","level":"info","timestamp":"2026-08-10T03:24:27+00:00","user_id":"local-test","tokens_in":48,"tokens_out":52,"cost_usd":0.0000384}
 ```
+
+Với log JSON này mình có thể lọc theo `event=ask_completed` để đếm số request thành công, và có thể cộng `cost_usd` hoặc nhóm theo `user_id` để theo dõi chi phí từng user. Một dòng `print("đã trả lời xong")` không có cấu trúc nên máy khó lọc, khó cộng chi phí, và khó dựng cảnh báo.
+
+---
+
+### Câu 3 - Kích thước image (CP2)
 
 | Bản | Dung lượng |
 |-----|-----------|
-| 1 stage (bản đầu) | ... MB |
-| Multi-stage | ... MB |
+| 1 stage, dùng `python:3.11` bản đầy đủ | khoảng hơn 1 GB |
+| Multi-stage `day12-agent:prod` | 353 MB |
 
-Giải thích: phần dung lượng chênh lệch đó là những gì?
-
-> *Câu trả lời của bạn*
+Phần chênh lệch chủ yếu đến từ base image đầy đủ của Python, các công cụ build, cache cài đặt, file không cần thiết và quyền root/runtime dư thừa. Bản multi-stage chỉ copy dependency đã cài và source cần chạy sang runtime `python:3.11-slim`, nên image nhỏ hơn và đạt yêu cầu dưới 500 MB.
 
 ---
 
-### Câu 4 — Thứ tự lệnh trong Dockerfile (CP2)
+### Câu 4 - Thứ tự lệnh trong Dockerfile (CP2)
 
-Sửa một ký tự trong `app/main.py` rồi build lại. Với Dockerfile của bạn, những
-layer nào được dùng lại từ cache, layer nào phải chạy lại? Nếu bạn đặt
-`COPY . .` lên trước `RUN pip install` thì kết quả khác thế nào?
-
-> *Câu trả lời của bạn*
+Dockerfile hiện copy `requirements.txt` trước, chạy `pip install`, rồi mới copy `app` và `utils`. Khi sửa một ký tự trong `app/main.py`, các layer base image, `WORKDIR`, `COPY requirements.txt`, và `RUN pip install` vẫn dùng cache; chỉ các layer copy source và những layer sau đó cần chạy lại. Nếu đặt `COPY . .` trước `RUN pip install`, mỗi lần sửa code Docker sẽ xem context thay đổi và phải cài lại toàn bộ dependency, build chậm hơn nhiều dù `requirements.txt` không đổi.
 
 ---
 
-### Câu 5 — Vì sao không chạy bằng root (CP2)
+### Câu 5 - Vì sao không chạy bằng root (CP2)
 
-Container mặc định chạy bằng root. Mô tả chuỗi sự kiện dẫn từ "một lỗ hổng
-trong code Python của bạn" tới "kẻ tấn công có quyền cao trên máy host", và
-lệnh `USER` cắt đứt chuỗi đó ở chỗ nào.
-
-> *Câu trả lời của bạn*
+Nếu container chạy root và code Python có lỗ hổng cho phép ghi file hoặc chạy lệnh, kẻ tấn công có thể có quyền root bên trong container. Từ đó họ có thể sửa file hệ thống trong container, đọc nhiều thông tin hơn, hoặc lợi dụng cấu hình mount/socket sai để tác động ra host. Lệnh `USER appuser` cắt chuỗi này ở bước leo quyền: process Uvicorn chỉ chạy bằng user thường, nên kể cả app bị khai thác thì quyền trong container bị giới hạn hơn.
 
 ---
 
-### Câu 6 — Cửa sổ trượt (CP3)
+### Câu 6 - Cửa sổ trượt (CP3)
 
-Rate limit của bạn dùng sliding window 60 giây. Nếu thay bằng cách đếm theo
-phút đồng hồ (reset lúc giây 00), một người dùng có thể gửi tối đa bao nhiêu
-request trong 2 giây liên tiếp khi hạn mức là 10/phút? Giải thích cách đạt được
-con số đó.
-
-> *Câu trả lời của bạn*
+Nếu đếm theo phút đồng hồ với hạn mức 10/phút, user có thể gửi 20 request trong khoảng 2 giây: gửi 10 request ở `10:00:59`, sau đó khi đồng hồ sang `10:01:00` bộ đếm reset và gửi thêm 10 request ở `10:01:01`. Sliding window 60 giây tránh lỗ hổng này vì tại thời điểm `10:01:01`, hệ thống vẫn nhìn lại 60 giây gần nhất và thấy 10 request cũ còn nằm trong cửa sổ.
 
 ---
 
-### Câu 7 — Rate limit và cost guard (CP3)
+### Câu 7 - Rate limit và cost guard (CP3)
 
-Hai cơ chế này khác nhau ở điểm nào? Cho một tình huống mà rate limit cho qua
-nhưng cost guard phải chặn, và một tình huống ngược lại.
-
-> *Câu trả lời của bạn*
+Rate limit giới hạn số lượng request trong một khoảng thời gian, còn cost guard giới hạn tổng chi phí theo user trong tháng. Ví dụ rate limit cho qua nhưng cost guard chặn: user chỉ gửi 1 request nhưng request đó có prompt/history rất dài làm chi phí vượt ngân sách tháng. Ngược lại, cost guard có thể vẫn cho qua vì mỗi request rất rẻ, nhưng rate limit chặn vì user spam quá 10 request trong 60 giây.
 
 ---
 
-### Câu 8 — /health khác /ready (CP4)
+### Câu 8 - `/health` khác `/ready` (CP4)
 
-Nếu gộp hai endpoint làm một và cho nó kiểm tra Redis, chuyện gì xảy ra với cụm
-3 container khi Redis mất kết nối 30 giây? Trả lời theo đúng thứ tự sự kiện.
-
-> *Câu trả lời của bạn*
+Nếu gộp `/health` và `/ready` rồi cho endpoint đó kiểm tra Redis, khi Redis mất kết nối 30 giây thì cả 3 container sẽ bắt đầu trả health check lỗi. Orchestrator tưởng process chết và restart các container, dù bản thân app vẫn sống. Các container restart đồng loạt làm mất request đang xử lý và tạo thêm nhiễu trong lúc Redis đang lỗi. Thiết kế đúng là `/health` chỉ kiểm tra process còn sống, còn `/ready` mới kiểm tra Redis để load balancer tạm ngừng gửi traffic vào instance chưa sẵn sàng.
 
 ---
 
-### Câu 9 — Stateless (CP4)
+### Câu 9 - Stateless (CP4)
 
-Chạy `docker compose up --scale agent=3` rồi gọi `/ask` nhiều lần với cùng một
-`X-User-Id`. Quan sát `history_length` trong response. Nếu lịch sử được lưu
-trong một dict Python thay vì Redis, bạn sẽ thấy con số đó thay đổi thế nào?
-
-> *Câu trả lời của bạn*
+Khi dùng Redis, nhiều instance `agent` cùng đọc/ghi một lịch sử nên gọi `/ask` nhiều lần với cùng `X-User-Id` sẽ thấy `history_length` tăng ổn định: 0, rồi 2, rồi 4... Nếu lưu trong một dict Python trong RAM, mỗi container có bộ nhớ riêng; request rơi vào instance khác sẽ thấy history rỗng hoặc số nhỏ hơn, làm agent lúc nhớ lúc quên. Redis giúp state sống ngoài process nên scale ngang vẫn nhất quán.
 
 ---
 
-### Câu 10 — Deploy thật (CP5)
+### Câu 10 - Deploy thật (CP5)
 
-Ghi lại **một** lỗi bạn gặp khi deploy lên cloud (build fail, health check
-timeout, sai REDIS_URL, app không đọc `$PORT`...): thông báo lỗi là gì, bạn
-tìm ra nguyên nhân bằng cách nào, và sửa ra sao?
-
-> *Câu trả lời của bạn*
+Lỗi mình gặp khi deploy Render là `/health` trả 200 nhưng `/ready` trả `503 {"status":"not ready","redis":false}` hoặc trước đó `/ask` trả 500. Mình tìm nguyên nhân bằng cách gọi từng endpoint public: `/health` OK chứng tỏ app đã chạy, `/ask` thiếu key phải là 401, còn `/ready` fail chứng tỏ phần dependency/config Redis hoặc secret cloud chưa đúng. Cách sửa là đặt đúng `AGENT_API_KEY` trong Environment Variables của web service và dùng cặp Blueprint `day12-agent` + `day12-redis` để `REDIS_URL` trỏ tới Render Key Value/Valkey service. Sau khi redeploy, `/ready` trả `{"status":"ready","redis":true}` và CP5 pass.

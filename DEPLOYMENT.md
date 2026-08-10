@@ -1,58 +1,57 @@
-# Thong Tin Deploy - Checkpoint 5
+# Thông Tin Deploy - Checkpoint 5
 
-## Thong Tin Hoc Vien
+## Thông Tin Học Viên
 
-| Muc | Noi dung |
+| Mục | Nội dung |
 |-----|----------|
-| Ho va ten | Nguyen Tuan Anh |
-| Ma hoc vien / mã học viên | 2A202601775 |
+| Họ và tên | Nguyễn Tuấn Anh |
+| Mã học viên | 2A202601775 |
 | Repo | https://github.com/ngtanh1112/DAY12-2A202601775-NguyenTuanAnh |
 
 ## Service
 
-| Muc | Noi dung |
+| Mục | Nội dung |
 |-----|----------|
-| Public URL | Chua co public cloud URL; dang dung local fallback tai `http://localhost:8000` |
-| Platform | Local fallback bang Docker Compose; du kien deploy Render hoac Railway |
-| Ngay deploy | 2026-08-10 |
+| Public URL | https://day12-agent-m7oz.onrender.com |
+| Platform | Render |
+| Ngày deploy | 2026-08-10 |
 
-## Bien Moi Truong Da Set Tren Cloud
+## Biến Môi Trường Đã Set Trên Cloud
 
-Ghi ten bien va nguon gia tri, khong ghi gia tri secret:
+Chỉ ghi tên biến và nguồn giá trị, không ghi giá trị secret:
 
-| Bien | Da set | Ghi chu |
+| Biến | Đã set | Ghi chú |
 |------|--------|---------|
-| `PORT` | co | Platform tu gan khi deploy; local compose dung 8000 |
-| `AGENT_API_KEY` | co | Dat trong `.env` local va se dat trong dashboard cloud, khong nam trong repo |
-| `REDIS_URL` | co | Local: Redis service trong Docker Compose; cloud: Redis add-on cua platform |
-| `RATE_LIMIT_PER_MINUTE` | co | 10 |
-| `MONTHLY_BUDGET_USD` | co | 10.0 |
-| `LOG_LEVEL` | co | INFO |
+| `PORT` | Có | Render tự gán cho web service |
+| `AGENT_API_KEY` | Có | Đặt trong Render dashboard, không nằm trong repo |
+| `REDIS_URL` | Có | Render Key Value/Valkey service `day12-redis` qua `render.yaml` |
+| `RATE_LIMIT_PER_MINUTE` | Có | 10 |
+| `MONTHLY_BUDGET_USD` | Có | 10.0 |
+| `LOG_LEVEL` | Có | INFO |
 
-## Lenh Kiem Tra
+## Lệnh Kiểm Tra
 
 ```bash
-curl -i http://localhost:8000/health
-curl -i http://localhost:8000/ready
-curl -i -X POST http://localhost:8000/ask \
+curl -i https://day12-agent-m7oz.onrender.com/health
+curl -i https://day12-agent-m7oz.onrender.com/ready
+curl -i -X POST https://day12-agent-m7oz.onrender.com/ask \
   -H "Content-Type: application/json" \
   -d '{"question":"Hello"}'
 ```
 
-## Ket Qua Chay That
+## Kết Quả Chạy Thật
 
 ```text
 GET /health -> 200 {"status":"ok","service":"day12-agent","version":"1.0.0"}
 GET /ready  -> 200 {"status":"ready","redis":true}
-POST /ask without X-API-Key -> 401
-POST /ask with X-API-Key -> 200, response co answer, user_id, history_length, cost_usd, tokens
+POST /ask without X-API-Key -> 401 {"detail":"invalid or missing API key"}
+POST /ask with X-API-Key -> 200, response có answer, user_id, history_length, cost_usd, tokens
 ```
 
-## Anh Chup Man Hinh
+## Ảnh Chụp Màn Hình
 
-Dat anh minh chung local fallback trong thu muc `screenshots/`.
+Ảnh minh chứng nên đặt trong thư mục `screenshots/`, ví dụ:
 
-## Neu Dung Phuong An Du Phong
-
-Dang dung phuong an du phong vi chua co public URL tu Railway/Render trong thoi diem chay test local.
-Local stack da chay bang Docker Compose voi `agent` va `redis` healthy.
+- dashboard Render của service `day12-agent`
+- kết quả mở `/health` hoặc `/ready` trên public URL
+- terminal chạy `pytest tests/test_cp5.py -v`
