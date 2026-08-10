@@ -1,34 +1,33 @@
-# ═══════════════════════════════════════════════════════════════════
-# CP2 — Containerization
-#
-# Dưới đây là Dockerfile "chạy được nhưng chưa production": một stage,
-# chạy bằng user root, không có health check, base image nặng.
-#
-# NHIỆM VỤ: sửa file này thành bản production-ready. Yêu cầu:
-#   [ ] Multi-stage build: stage `builder` cài dependency, stage runtime
-#       chỉ copy kết quả sang → image nhỏ hơn, không mang theo compiler.
-#       Cú pháp: `FROM python:3.11-slim AS builder`
-#   [ ] Base image slim (hoặc alpine), không dùng `python:3.11` bản đầy đủ
-#   [ ] COPY requirements.txt và pip install TRƯỚC khi COPY source code
-#       (Docker cache theo layer: sửa 1 dòng code không phải cài lại thư viện)
-#   [ ] Tạo user thường và chuyển sang bằng lệnh `USER` — container chạy
-#       root nghĩa là ai thoát được khỏi app cũng thành root trên host
-#   [ ] Có `HEALTHCHECK` gọi vào endpoint /health
-#   [ ] Đọc cổng từ biến môi trường PORT (cloud tự gán cổng, không cố định 8000)
-#
-# Kiểm tra:  pytest tests/test_cp2.py -v
-# Build thử: docker build -t day12-agent:prod .
-#            docker images day12-agent:prod     # xem dung lượng
-# ═══════════════════════════════════════════════════════════════════
+FROM python:3.11-slim AS builder
 
-FROM python:3.11
+WORKDIR /build
+
+ENV PIP_NO_CACHE_DIR=1
+
+COPY requirements.txt .
+RUN pip install --prefix=/install -r requirements.txt
+
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-COPY . .
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/install/bin:${PATH}" \
+    PYTHONPATH="/install/lib/python3.11/site-packages"
 
-RUN pip install -r requirements.txt
+COPY --from=builder /install /install
+COPY app ./app
+COPY utils ./utils
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app /install
+
+USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"8000\")}/health', timeout=3).read()"
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
